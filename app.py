@@ -88,12 +88,26 @@ def index():
                 "auth_login": "POST /api/auth/login",
                 "auth_me": "GET /api/auth/me",
                 "upload": "POST /api/upload",
-                "database_info": "GET /api/database/info",
                 "tables": "GET /api/tables",
                 "query": "POST /api/query"
             }
         })
     return render_template("index.html")
+
+
+
+@app.errorhandler(404)
+def handle_404(e):
+    rules = [str(r) for r in app.url_map.iter_rules()]
+    return jsonify({
+        "error": "Not Found",
+        "requested_path": request.path,
+        "environ_path_info": request.environ.get("PATH_INFO"),
+        "environ_script_name": request.environ.get("SCRIPT_NAME"),
+        "available_routes": rules
+    }), 404
+
+
 
 
 
