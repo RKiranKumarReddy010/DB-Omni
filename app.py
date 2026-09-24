@@ -104,8 +104,10 @@ def handle_404(e):
         "requested_path": request.path,
         "environ_path_info": request.environ.get("PATH_INFO"),
         "environ_script_name": request.environ.get("SCRIPT_NAME"),
+        "headers": dict(request.headers),
         "available_routes": rules
     }), 404
+
 
 
 
