@@ -27,6 +27,7 @@ import jwt
 import pandas as pd
 import firebase_admin
 from firebase_admin import credentials, firestore
+from urllib.parse import parse_qs, unquote
 from flask import Flask, request, jsonify, render_template
 from dotenv import load_dotenv
 
@@ -36,6 +37,29 @@ load_dotenv()
 
 TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 app = Flask(__name__, template_folder=TEMPLATE_DIR)
+
+
+class VercelPathMiddleware:
+    """
+    On Vercel, URL rewrites point to /api/index with __path__ query parameter.
+    This WSGI middleware restores the original PATH_INFO so Flask routes work seamlessly.
+    """
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        qs = parse_qs(environ.get("QUERY_STRING", ""))
+        if "__path__" in qs and qs["__path__"]:
+            target_path = unquote(qs["__path__"][0])
+            if not target_path.startswith("/"):
+                target_path = "/" + target_path
+            environ["PATH_INFO"] = target_path
+        elif environ.get("PATH_INFO") == "/api/index":
+            environ["PATH_INFO"] = "/"
+        return self.wsgi_app(environ, start_response)
+
+
+app.wsgi_app = VercelPathMiddleware(app.wsgi_app)
 
 _firebase_app = None
 _fs           = None
