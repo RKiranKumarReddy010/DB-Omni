@@ -98,16 +98,12 @@ def index():
 
 @app.errorhandler(404)
 def handle_404(e):
+    env_dump = {k: str(v) for k, v in request.environ.items() if isinstance(v, (str, int, float, bool))}
     return jsonify({
         "error": "Not Found",
-        "requested_path": request.path
+        "requested_path": request.path,
+        "environ": env_dump
     }), 404
-
-
-
-
-
-
 
 
 def get_firestore():
