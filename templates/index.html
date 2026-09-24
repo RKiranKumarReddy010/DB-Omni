@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DB-Omni &bull; Server is Running</title>
+  <meta name="description" content="DB-Omni Backend API Service Status &amp; Documentation">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090c15;
+      --card-bg: rgba(18, 24, 38, 0.7);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --card-hover: rgba(255, 255, 255, 0.12);
+      --emerald: #10b981;
+      --emerald-glow: rgba(16, 185, 129, 0.35);
+      --emerald-dark: #064e3b;
+      --cyan: #06b6d4;
+      --indigo: #6366f1;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      background-image: 
+        radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.12) 0%, transparent 40%),
+        radial-gradient(circle at 80% 30%, rgba(16, 185, 129, 0.12) 0%, transparent 45%),
+        radial-gradient(circle at 50% 80%, rgba(6, 182, 212, 0.08) 0%, transparent 50%);
+      color: var(--text);
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 40px 20px 60px;
+      overflow-x: hidden;
+      line-height: 1.5;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 860px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    /* ─── Hero Banner ─── */
+    .hero {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      padding: 40px 36px;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5), 0 0 50px -20px var(--emerald-glow);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--emerald), var(--cyan), transparent);
+    }
+
+    /* ─── Blinking Indicator ─── */
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 20px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      border-radius: 9999px;
+      margin-bottom: 24px;
+    }
+
+    .beacon {
+      position: relative;
+      width: 14px;
+      height: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .beacon-dot {
+      width: 10px;
+      height: 10px;
+      background: var(--emerald);
+      border-radius: 50%;
+      box-shadow: 0 0 12px var(--emerald);
+      animation: blink 1.4s ease-in-out infinite;
+    }
+
+    .beacon-ping {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: var(--emerald);
+      opacity: 0.75;
+      animation: ripple 1.4s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+        filter: drop-shadow(0 0 8px #10b981);
+      }
+      50% {
+        opacity: 0.35;
+        transform: scale(0.85);
+        filter: drop-shadow(0 0 2px #10b981);
+      }
+    }
+
+    @keyframes ripple {
+      0% {
+        transform: scale(0.8);
+        opacity: 0.9;
+      }
+      100% {
+        transform: scale(2.8);
+        opacity: 0;
+      }
+    }
+
+    .status-text {
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #34d399;
+      text-shadow: 0 0 10px rgba(52, 211, 153, 0.4);
+    }
+
+    .title {
+      font-size: 2.6rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, #ffffff 30%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+      max-width: 580px;
+      margin: 0 auto 28px;
+    }
+
+    /* ─── Metric Badges ─── */
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 16px;
+      margin-top: 8px;
+    }
+
+    .metric-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      text-align: left;
+    }
+
+    .metric-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+
+    .metric-val {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .metric-val.green {
+      color: #34d399;
+    }
+
+    /* ─── Endpoints Section ─── */
+    .section-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 30px;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+
+    .section-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .section-title span {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    .endpoint-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .endpoint-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      transition: all 0.2s ease;
+    }
+
+    .endpoint-row:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: var(--card-hover);
+      transform: translateX(3px);
+    }
+
+    .endpoint-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.88rem;
+    }
+
+    .method {
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 6px;
+      letter-spacing: 0.04em;
+    }
+
+    .method.post {
+      background: rgba(99, 102, 241, 0.18);
+      color: #a5b4fc;
+      border: 1px solid rgba(99, 102, 241, 0.3);
+    }
+
+    .method.get {
+      background: rgba(16, 185, 129, 0.18);
+      color: #6ee7b7;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .method.delete {
+      background: rgba(239, 68, 68, 0.18);
+      color: #fca5a5;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .endpoint-desc {
+      font-size: 0.82rem;
+      color: var(--text-dim);
+    }
+
+    /* ─── Footer ─── */
+    .footer {
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.82rem;
+      margin-top: 10px;
+    }
+
+    .footer a {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .footer a:hover {
+      color: var(--text);
+    }
+
+    @media (max-width: 640px) {
+      .hero {
+        padding: 30px 20px;
+      }
+      .title {
+        font-size: 2rem;
+      }
+      .endpoint-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    
+    <!-- Hero Status Card -->
+    <div class="hero">
+      
+      <!-- Blinking Radar Pill -->
+      <div class="status-pill">
+        <div class="beacon">
+          <div class="beacon-ping"></div>
+          <div class="beacon-dot"></div>
+        </div>
+        <span class="status-text">Server is running</span>
+      </div>
+
+      <h1 class="title">DB-Omni Backend</h1>
+      <p class="subtitle">High-performance multi-tenant SQLite database engine with Firebase Firestore authentication and Excel workbook ingestion.</p>
+
+      <!-- Real-time Metrics -->
+      <div class="metrics">
+        <div class="metric-card">
+          <div class="metric-label">Status</div>
+          <div class="metric-val green">
+            <span>Operational</span>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Live Ping</div>
+          <div class="metric-val" id="pingDisplay">
+            <span id="pingVal">Checking...</span>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Auth Provider</div>
+          <div class="metric-val">Firestore</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Engine</div>
+          <div class="metric-val">Flask &bull; SQLite</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- API Directory -->
+    <div class="section-card">
+      <div class="section-title">
+        Available API Endpoints
+        <span>Active &amp; Ready</span>
+      </div>
+
+      <div class="endpoint-list">
+        <div class="endpoint-row">
+          <div class="endpoint-left">
+            <span class="method post">POST</span>
+            <span>/api/auth/login</span>
+          </div>
+          <div class="endpoint-desc">Authenticate with user_id &amp; password</div>
+        </div>
+
+        <div class="endpoint-row">
+          <div class="endpoint-left">
+            <span class="method get">GET</span>
+            <span>/api/auth/me</span>
+          </div>
+          <div class="endpoint-desc">Verify Bearer JWT &amp; get user details</div>
+        </div>
+
+        <div class="endpoint-row">
+          <div class="endpoint-left">
+            <span class="method post">POST</span>
+            <span>/api/upload</span>
+          </div>
+          <div class="endpoint-desc">Upload Excel (.xlsx) &rarr; user SQLite DB</div>
+        </div>
+
+        <div class="endpoint-row">
+          <div class="endpoint-left">
+            <span class="method get">GET</span>
+            <span>/api/database/info</span>
+          </div>
+          <div class="endpoint-desc">User DB size, file name, and tables list</div>
+        </div>
+
+        <div class="endpoint-row">
+          <div class="endpoint-left">
+            <span class="method get">GET</span>
+            <span>/api/tables</span>
+          </div>
+          <div class="endpoint-desc">List all tables with row counts</div>
+        </div>
+
+        <div class="endpoint-row">
+          <div class="endpoint-left">
+            <span class="method post">POST</span>
+            <span>/api/query</span>
+          </div>
+          <div class="endpoint-desc">Execute custom SQL against your database</div>
+        </div>
+
+        <div class="endpoint-row">
+          <div class="endpoint-left">
+            <span class="method delete">DELETE</span>
+            <span>/api/database</span>
+          </div>
+          <div class="endpoint-desc">Purge current user's database file</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      DB-Omni API Service &bull; OmniTensors Ecosystem &bull; Cloud Deployed
+    </div>
+
+  </div>
+
+  <script>
+    // Live ping tester
+    async function measurePing() {
+      const pingEl = document.getElementById('pingVal');
+      const start = performance.now();
+      try {
+        const res = await fetch('/?format=json', { cache: 'no-store' });
+        if (res.ok) {
+          const duration = Math.round(performance.now() - start);
+          pingEl.textContent = `${duration} ms`;
+          pingEl.style.color = '#34d399';
+        } else {
+          pingEl.textContent = 'Active';
+          pingEl.style.color = '#34d399';
+        }
+      } catch (e) {
+        pingEl.textContent = 'Active';
+        pingEl.style.color = '#34d399';
+      }
+    }
+
+    measurePing();
+    setInterval(measurePing, 5000);
+  </script>
+</body>
+</html>

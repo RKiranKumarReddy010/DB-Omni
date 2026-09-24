@@ -27,14 +27,15 @@ import jwt
 import pandas as pd
 import firebase_admin
 from firebase_admin import credentials, firestore
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from dotenv import load_dotenv
 
 # ─── Bootstrap ─────────────────────────────────────────────────────────────────
 
 load_dotenv()
 
-app = Flask(__name__)
+TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
+app = Flask(__name__, template_folder=TEMPLATE_DIR)
 
 _firebase_app = None
 _fs           = None
@@ -73,23 +74,27 @@ def add_cors_headers(response):
     return response
 
 
-# ─── Root Route / Health Check ────────────────────────────────────────────────
+# ─── Root Route / Live Server Status ──────────────────────────────────────────
 
 @app.route("/", methods=["GET"])
 def index():
-    return jsonify({
-        "status": "online",
-        "service": "DB-Omni API",
-        "version": "1.0.0",
-        "endpoints": {
-            "auth_login": "POST /api/auth/login",
-            "auth_me": "GET /api/auth/me",
-            "upload": "POST /api/upload",
-            "database_info": "GET /api/database/info",
-            "tables": "GET /api/tables",
-            "query": "POST /api/query"
-        }
-    })
+    if request.args.get("format") == "json" or request.headers.get("Accept") == "application/json":
+        return jsonify({
+            "status": "online",
+            "message": "DB-Omni Server is running",
+            "service": "DB-Omni API",
+            "version": "1.0.0",
+            "endpoints": {
+                "auth_login": "POST /api/auth/login",
+                "auth_me": "GET /api/auth/me",
+                "upload": "POST /api/upload",
+                "database_info": "GET /api/database/info",
+                "tables": "GET /api/tables",
+                "query": "POST /api/query"
+            }
+        })
+    return render_template("index.html")
+
 
 
 
