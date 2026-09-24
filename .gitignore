@@ -1,7 +1,13 @@
 # Python virtual environment
+venv/
 vevnn/
 .venv/
 env/
+.env
+
+# Firebase service account key (NEVER commit — use env var on Vercel)
+Private/
+serviceAccountKey.json
 
 # Python cache
 __pycache__/
@@ -17,3 +23,4 @@ Database/__tmp__*
 # OS
 .DS_Store
 Thumbs.db
+Private

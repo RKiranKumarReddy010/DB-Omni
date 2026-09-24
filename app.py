@@ -1,18 +1,123 @@
+"""
+DB-Omni API
+===========
+Authentication flow:
+  1. POST /api/auth/login  { "user_id": "...", "password": "..." }
+     → queries Firestore `playground_users` collection (same as OmniTensors_dashboard)
+     → returns a signed JWT carrying { user_id, privileges }
+
+  2. Every other endpoint requires:
+        Authorization: Bearer <token>
+     The JWT is decoded to extract `user_id`, which is used as the SQLite
+     database filename:  Database/<user_id>.db
+
+Database scoping:
+  Each authenticated user gets their own isolated database file.
+  No user can access another user's data.
+"""
+
 import os
 import re
 import sqlite3
+import datetime
+import functools
+
+import jwt
 import pandas as pd
+import firebase_admin
+from firebase_admin import credentials, firestore
 from flask import Flask, request, jsonify
+from dotenv import load_dotenv
+
+# ─── Bootstrap ─────────────────────────────────────────────────────────────────
+
+load_dotenv()
 
 app = Flask(__name__)
 
 DATABASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Database")
 os.makedirs(DATABASE_DIR, exist_ok=True)
 
+# Firebase is initialised lazily inside get_firestore().
+# Nothing runs at import time, so the server always starts successfully
+# even if serviceAccountKey.json is not yet present.
+_firebase_app = None
+_fs           = None
+
+
+def get_firestore():
+    """
+    Lazily initialise Firebase Admin SDK and return a Firestore client.
+
+    Credential resolution order:
+      1. FIREBASE_CREDENTIALS env var  — full JSON string (use on Vercel)
+      2. Any *.json file in Private/   — local dev convenience
+      3. serviceAccountKey.json        — local dev fallback
+
+    Raises RuntimeError with setup instructions if nothing is found.
+    """
+    global _firebase_app, _fs
+
+    if _fs is not None:
+        return _fs
+
+    root = os.path.dirname(os.path.abspath(__file__))
+    cred = None
+
+    # ── 1. Env var: full JSON string (Vercel / CI) ─────────────────────────
+    creds_json = os.getenv("FIREBASE_CREDENTIALS", "").strip()
+    if creds_json:
+        try:
+            cred_dict = json.loads(creds_json)
+            cred = credentials.Certificate(cred_dict)
+        except Exception as e:
+            raise RuntimeError(f"FIREBASE_CREDENTIALS env var is not valid JSON: {e}")
+
+    # ── 2 & 3. File-based (local dev) ──────────────────────────────────────
+    if cred is None:
+        candidates = []
+
+        env_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "")
+        if env_path:
+            candidates.append(os.path.join(root, env_path))
+
+        private_dir = os.path.join(root, "Private")
+        if os.path.isdir(private_dir):
+            for fname in sorted(os.listdir(private_dir)):
+                if fname.endswith(".json"):
+                    candidates.append(os.path.join(private_dir, fname))
+
+        candidates.append(os.path.join(root, "serviceAccountKey.json"))
+
+        sa_path = next((p for p in candidates if os.path.exists(p)), None)
+
+        if sa_path is None:
+            raise RuntimeError(
+                "Firebase credentials not found. "
+                "On Vercel: set the FIREBASE_CREDENTIALS env var to the full JSON content "
+                "of your service account key. "
+                "Locally: place the JSON file in the Private/ folder."
+            )
+        cred = credentials.Certificate(sa_path)
+
+    if not firebase_admin._apps:
+        _firebase_app = firebase_admin.initialize_app(cred)
+
+    _fs = firestore.client()
+    return _fs
+
+# ─── JWT config ────────────────────────────────────────────────────────────────
+
+JWT_SECRET    = os.getenv("JWT_SECRET", "change-me-to-a-long-random-secret")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+JWT_EXPIRE    = int(os.getenv("JWT_EXPIRE_SECONDS", 28800))  # 8 hours
+
 ALLOWED_EXTENSIONS = {"xlsx", "xls", "xlsm", "xlsb", "ods"}
 
 
-# ─── Helpers ───────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Helpers
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -40,33 +145,30 @@ def pick_engine(path: str) -> str:
     return "xlrd" if path.rsplit(".", 1)[-1].lower() == "xls" else "openpyxl"
 
 
-def get_db_path(db_name: str) -> str:
-    """Resolve full path; db_name may or may not carry the .db extension."""
-    if not db_name.endswith(".db"):
-        db_name += ".db"
-    return os.path.join(DATABASE_DIR, db_name)
-
-
 def _safe_isna(v) -> bool:
-    """Return True if v is NA/NaN/NaT, safely handles array-like values."""
+    """Return True if v is NA/NaN/NaT; handles scalars and array-likes safely."""
     try:
         return bool(pd.isna(v))
     except (TypeError, ValueError):
         return False
 
 
-def excel_to_sqlite(file_path: str, db_name: str) -> dict:
+def get_user_db_path(user_id: str) -> str:
+    """
+    Each user gets their own database file: Database/<user_id>.db
+    user_id is sanitised so it is always a safe filename.
+    """
+    safe_id = re.sub(r"[^\w\-]", "_", user_id)
+    return os.path.join(DATABASE_DIR, f"{safe_id}.db")
+
+
+def excel_to_sqlite(file_path: str, db_path: str) -> dict:
     """
     Parse every sheet of an Excel file and write each sheet as a table
-    inside Database/<db_name>.db.  Returns a summary dict.
-
-    The ExcelFile handle is explicitly closed before this function returns
-    so Windows releases the file lock and the caller can safely delete the
-    temporary upload file.
+    inside the given db_path.  Returns a summary dict.
     """
-    db_path = get_db_path(db_name)
     xl = pd.ExcelFile(file_path, engine=pick_engine(file_path))
-    summary = {"db_name": db_name, "db_file": f"{db_name}.db", "sheets": []}
+    summary = {"db_file": os.path.basename(db_path), "sheets": []}
 
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
@@ -107,10 +209,8 @@ def excel_to_sqlite(file_path: str, db_name: str) -> dict:
                     if _safe_isna(v):
                         values.append(None)
                     elif hasattr(v, "isoformat"):
-                        # datetime / Timestamp / date
                         values.append(v.isoformat())
                     else:
-                        # Convert numpy scalars to native Python types
                         values.append(v.item() if hasattr(v, "item") else v)
                 ph = ", ".join(["?"] * len(df.columns))
                 col_list = ", ".join([f'"{c}"' for c in df.columns])
@@ -127,8 +227,7 @@ def excel_to_sqlite(file_path: str, db_name: str) -> dict:
                 "columns": list(df.columns),
             })
     finally:
-        # IMPORTANT: close the ExcelFile handle so Windows releases the lock
-        # on the temporary file before the caller tries to delete it.
+        # Release file handle so Windows can delete the temp file
         xl.close()
         conn.close()
 
@@ -136,16 +235,116 @@ def excel_to_sqlite(file_path: str, db_name: str) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  API ROUTES
+#  JWT helpers
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# ─── Upload ────────────────────────────────────────────────────────────────────
+def create_token(user_id: str, privileges: str) -> str:
+    payload = {
+        "user_id":    user_id,
+        "privileges": privileges,
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(seconds=JWT_EXPIRE),
+        "iat": datetime.datetime.utcnow(),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def decode_token(token: str) -> dict:
+    """Decode and validate JWT. Raises jwt.exceptions.* on failure."""
+    return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+
+
+def require_auth(f):
+    """
+    Decorator: extracts Bearer token from Authorization header,
+    decodes it, and injects `current_user` dict into the view function.
+    """
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Missing or malformed Authorization header"}), 401
+        token = auth_header[7:]
+        try:
+            payload = decode_token(token)
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "Token has expired. Please log in again."}), 401
+        except jwt.InvalidTokenError as e:
+            return jsonify({"error": f"Invalid token: {e}"}), 401
+
+        return f(*args, current_user=payload, **kwargs)
+    return wrapper
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  AUTH ROUTES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# POST /api/auth/login
+# Body: { "user_id": "kiran.kumar", "password": "••••••••" }
+# Queries the same Firestore `playground_users` collection used by OmniTensors.
+# Returns: { "token": "<jwt>", "user_id": "...", "privileges": "..." }
+
+@app.route("/api/auth/login", methods=["POST"])
+def login():
+    body = request.get_json() or {}
+    user_id  = body.get("user_id", "").strip()
+    password = body.get("password", "").strip()
+
+    if not user_id or not password:
+        return jsonify({"error": "user_id and password are required"}), 400
+
+    try:
+        fs = get_firestore()
+        docs = (
+            fs.collection("playground_users")
+            .where("userId", "==", user_id)
+            .where("password", "==", password)
+            .limit(1)
+            .get()
+        )
+    except RuntimeError as exc:
+        # serviceAccountKey.json is missing — return a setup guide
+        return jsonify({"error": str(exc)}), 503
+    except Exception as exc:
+        return jsonify({"error": f"Firestore error: {exc}"}), 500
+
+    if not docs:
+        return jsonify({"error": "Invalid user_id or password"}), 401
+
+    user_doc   = docs[0].to_dict()
+    privileges = user_doc.get("privileges", "Interactive Analyst")
+    token      = create_token(user_id, privileges)
+
+    return jsonify({
+        "token":      token,
+        "user_id":    user_id,
+        "privileges": privileges,
+        "expires_in": JWT_EXPIRE,
+    })
+
+
+# GET /api/auth/me  → return current user info from token
+@app.route("/api/auth/me", methods=["GET"])
+@require_auth
+def me(current_user):
+    return jsonify({
+        "user_id":    current_user["user_id"],
+        "privileges": current_user["privileges"],
+    })
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  UPLOAD
+# ═══════════════════════════════════════════════════════════════════════════════
+
 # POST /api/upload
-#   Body: multipart/form-data  field "file" = Excel workbook
-#   Creates Database/<filename>.db with one table per sheet.
+# Header: Authorization: Bearer <token>
+# Body: multipart/form-data  field "file" = Excel workbook
+# Saves sheets as tables inside Database/<user_id>.db
 
 @app.route("/api/upload", methods=["POST"])
-def upload():
+@require_auth
+def upload(current_user):
     if "file" not in request.files:
         return jsonify({"error": "No file part in request"}), 400
     file = request.files["file"]
@@ -154,95 +353,118 @@ def upload():
     if not allowed_file(file.filename):
         return jsonify({"error": "Unsupported type. Accepted: .xlsx .xls .xlsm .xlsb .ods"}), 400
 
-    db_name = sanitize_name(os.path.splitext(file.filename)[0])
-    tmp_path = os.path.join(DATABASE_DIR, "__tmp__" + os.path.splitext(file.filename)[1])
+    user_id = current_user["user_id"]
+    db_path = get_user_db_path(user_id)
+    ext     = os.path.splitext(file.filename)[1]
+    tmp_path = os.path.join(DATABASE_DIR, f"__tmp_{user_id}__{ext}")
     file.save(tmp_path)
 
     try:
-        summary = excel_to_sqlite(tmp_path, db_name)
+        summary = excel_to_sqlite(tmp_path, db_path)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
+    summary["user_id"] = user_id
     return jsonify({"success": True, "summary": summary}), 201
 
 
-# ─── Databases ─────────────────────────────────────────────────────────────────
-# GET  /api/databases          – list all .db files
-# DELETE /api/databases/<name> – delete a database file
+# ═══════════════════════════════════════════════════════════════════════════════
+#  DATABASE INFO
+# ═══════════════════════════════════════════════════════════════════════════════
 
-@app.route("/api/databases", methods=["GET"])
-def list_databases():
-    dbs = []
-    for fname in sorted(os.listdir(DATABASE_DIR)):
-        if not fname.endswith(".db"):
-            continue
-        fpath = os.path.join(DATABASE_DIR, fname)
-        conn = sqlite3.connect(fpath)
-        cur = conn.cursor()
-        cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
-        tables = [r[0] for r in cur.fetchall()]
-        conn.close()
-        dbs.append({
-            "name": fname,
-            "size_bytes": os.path.getsize(fpath),
-            "tables": tables,
-        })
-    return jsonify(dbs)
+# GET /api/database/info  → size, table list for the current user's DB
 
-
-@app.route("/api/databases/<db_name>", methods=["DELETE"])
-def delete_database(db_name):
-    db_path = get_db_path(db_name)
+@app.route("/api/database/info", methods=["GET"])
+@require_auth
+def db_info(current_user):
+    db_path = get_user_db_path(current_user["user_id"])
     if not os.path.exists(db_path):
-        return jsonify({"error": "Database not found"}), 404
-    os.remove(db_path)
-    return jsonify({"success": True, "deleted": db_name})
+        return jsonify({"error": "No database found. Upload an Excel file first."}), 404
 
-
-# ─── Tables ────────────────────────────────────────────────────────────────────
-# GET /api/databases/<db>/tables                     – list tables
-# GET /api/databases/<db>/tables/<table>/schema      – column definitions
-
-@app.route("/api/databases/<db_name>/tables", methods=["GET"])
-def list_tables(db_name):
-    db_path = get_db_path(db_name)
-    if not os.path.exists(db_path):
-        return jsonify({"error": "Database not found"}), 404
     conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
+    cur  = conn.cursor()
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+    tables = [r[0] for r in cur.fetchall()]
+    conn.close()
+
+    return jsonify({
+        "user_id":    current_user["user_id"],
+        "db_file":    os.path.basename(db_path),
+        "size_bytes": os.path.getsize(db_path),
+        "tables":     tables,
+    })
+
+
+# DELETE /api/database  → wipe the current user's entire database file
+
+@app.route("/api/database", methods=["DELETE"])
+@require_auth
+def delete_database(current_user):
+    db_path = get_user_db_path(current_user["user_id"])
+    if not os.path.exists(db_path):
+        return jsonify({"error": "No database found"}), 404
+    os.remove(db_path)
+    return jsonify({"success": True, "message": "Your database has been deleted."})
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  TABLES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# GET /api/tables  → list tables
+
+@app.route("/api/tables", methods=["GET"])
+@require_auth
+def list_tables(current_user):
+    db_path = get_user_db_path(current_user["user_id"])
+    if not os.path.exists(db_path):
+        return jsonify({"error": "No database found. Upload an Excel file first."}), 404
+
+    conn = sqlite3.connect(db_path)
+    cur  = conn.cursor()
     cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
     tables = [r[0] for r in cur.fetchall()]
     conn.close()
     return jsonify({"tables": tables})
 
 
-@app.route("/api/databases/<db_name>/tables/<table_name>/schema", methods=["GET"])
-def get_schema(db_name, table_name):
-    db_path = get_db_path(db_name)
+# GET /api/tables/<table>/schema  → column definitions
+
+@app.route("/api/tables/<table_name>/schema", methods=["GET"])
+@require_auth
+def get_schema(table_name, current_user):
+    db_path = get_user_db_path(current_user["user_id"])
     if not os.path.exists(db_path):
-        return jsonify({"error": "Database not found"}), 404
+        return jsonify({"error": "No database found"}), 404
+
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
+    cur  = conn.cursor()
     cur.execute(f'PRAGMA table_info("{table_name}")')
-    columns = [{"cid": r["cid"], "name": r["name"], "type": r["type"],
-                "notnull": bool(r["notnull"]), "pk": bool(r["pk"])} for r in cur.fetchall()]
+    columns = [
+        {"cid": r["cid"], "name": r["name"], "type": r["type"],
+         "notnull": bool(r["notnull"]), "pk": bool(r["pk"])}
+        for r in cur.fetchall()
+    ]
     conn.close()
     return jsonify({"table": table_name, "columns": columns})
 
 
-# ─── CRUD : Read ───────────────────────────────────────────────────────────────
-# GET /api/databases/<db>/tables/<table>/rows
-#   Query params: page (default 1), limit (default 50, max 500), search (text)
+# ═══════════════════════════════════════════════════════════════════════════════
+#  CRUD – ROWS
+# ═══════════════════════════════════════════════════════════════════════════════
 
-@app.route("/api/databases/<db_name>/tables/<table_name>/rows", methods=["GET"])
-def read_rows(db_name, table_name):
-    db_path = get_db_path(db_name)
+# GET /api/tables/<table>/rows?page=1&limit=50&search=...  → paginated read
+
+@app.route("/api/tables/<table_name>/rows", methods=["GET"])
+@require_auth
+def read_rows(table_name, current_user):
+    db_path = get_user_db_path(current_user["user_id"])
     if not os.path.exists(db_path):
-        return jsonify({"error": "Database not found"}), 404
+        return jsonify({"error": "No database found"}), 404
 
     page   = max(1, int(request.args.get("page", 1)))
     limit  = min(500, max(1, int(request.args.get("limit", 50))))
@@ -251,7 +473,7 @@ def read_rows(db_name, table_name):
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
+    cur  = conn.cursor()
 
     cur.execute(f'PRAGMA table_info("{table_name}")')
     columns = [{"name": r["name"], "type": r["type"]} for r in cur.fetchall()]
@@ -260,9 +482,9 @@ def read_rows(db_name, table_name):
     if search:
         text_cols = [c["name"] for c in columns if "TEXT" in c["type"].upper() or c["type"] == ""]
         if text_cols:
-            conds = " OR ".join([f'CAST("{c}" AS TEXT) LIKE ?' for c in text_cols])
-            where_clause = f"WHERE {conds}"
-            params_w = [f"%{search}%"] * len(text_cols)
+            conds         = " OR ".join([f'CAST("{c}" AS TEXT) LIKE ?' for c in text_cols])
+            where_clause  = f"WHERE {conds}"
+            params_w      = [f"%{search}%"] * len(text_cols)
 
     cur.execute(f'SELECT COUNT(*) FROM "{table_name}" {where_clause}', params_w)
     total = cur.fetchone()[0]
@@ -276,31 +498,30 @@ def read_rows(db_name, table_name):
 
     return jsonify({
         "columns": columns,
-        "rows": rows,
-        "total": total,
-        "page": page,
-        "limit": limit,
-        "pages": max(1, -(-total // limit)),
+        "rows":    rows,
+        "total":   total,
+        "page":    page,
+        "limit":   limit,
+        "pages":   max(1, -(-total // limit)),
     })
 
 
-# ─── CRUD : Create ─────────────────────────────────────────────────────────────
-# POST /api/databases/<db>/tables/<table>/rows
-#   Body: JSON object with column:value pairs  (omit "id")
+# POST /api/tables/<table>/rows  → create row
 
-@app.route("/api/databases/<db_name>/tables/<table_name>/rows", methods=["POST"])
-def create_row(db_name, table_name):
-    db_path = get_db_path(db_name)
+@app.route("/api/tables/<table_name>/rows", methods=["POST"])
+@require_auth
+def create_row(table_name, current_user):
+    db_path = get_user_db_path(current_user["user_id"])
     if not os.path.exists(db_path):
-        return jsonify({"error": "Database not found"}), 404
+        return jsonify({"error": "No database found"}), 404
 
     data = request.get_json()
     if not data:
         return jsonify({"error": "Request body must be JSON"}), 400
 
     data.pop("id", None)
-    cols   = list(data.keys())
-    values = list(data.values())
+    cols    = list(data.keys())
+    values  = list(data.values())
     col_sql = ", ".join([f'"{c}"' for c in cols])
     ph      = ", ".join(["?"] * len(cols))
 
@@ -320,15 +541,14 @@ def create_row(db_name, table_name):
         return jsonify({"error": str(exc)}), 400
 
 
-# ─── CRUD : Update ─────────────────────────────────────────────────────────────
-# PUT /api/databases/<db>/tables/<table>/rows/<id>
-#   Body: JSON object with the fields to update  (omit "id")
+# PUT /api/tables/<table>/rows/<id>  → update row
 
-@app.route("/api/databases/<db_name>/tables/<table_name>/rows/<int:row_id>", methods=["PUT"])
-def update_row(db_name, table_name, row_id):
-    db_path = get_db_path(db_name)
+@app.route("/api/tables/<table_name>/rows/<int:row_id>", methods=["PUT"])
+@require_auth
+def update_row(table_name, row_id, current_user):
+    db_path = get_user_db_path(current_user["user_id"])
     if not os.path.exists(db_path):
-        return jsonify({"error": "Database not found"}), 404
+        return jsonify({"error": "No database found"}), 404
 
     data = request.get_json()
     if not data:
@@ -356,14 +576,14 @@ def update_row(db_name, table_name, row_id):
         return jsonify({"error": str(exc)}), 400
 
 
-# ─── CRUD : Delete ─────────────────────────────────────────────────────────────
-# DELETE /api/databases/<db>/tables/<table>/rows/<id>
+# DELETE /api/tables/<table>/rows/<id>  → delete row
 
-@app.route("/api/databases/<db_name>/tables/<table_name>/rows/<int:row_id>", methods=["DELETE"])
-def delete_row(db_name, table_name, row_id):
-    db_path = get_db_path(db_name)
+@app.route("/api/tables/<table_name>/rows/<int:row_id>", methods=["DELETE"])
+@require_auth
+def delete_row(table_name, row_id, current_user):
+    db_path = get_user_db_path(current_user["user_id"])
     if not os.path.exists(db_path):
-        return jsonify({"error": "Database not found"}), 404
+        return jsonify({"error": "No database found"}), 404
 
     try:
         conn = sqlite3.connect(db_path)
@@ -379,15 +599,19 @@ def delete_row(db_name, table_name, row_id):
         return jsonify({"error": str(exc)}), 400
 
 
-# ─── SQL Console ───────────────────────────────────────────────────────────────
-# POST /api/databases/<db>/query
-#   Body: { "sql": "SELECT ..." }
+# ═══════════════════════════════════════════════════════════════════════════════
+#  SQL CONSOLE
+# ═══════════════════════════════════════════════════════════════════════════════
 
-@app.route("/api/databases/<db_name>/query", methods=["POST"])
-def run_query(db_name):
-    db_path = get_db_path(db_name)
+# POST /api/query
+# Body: { "sql": "SELECT ..." }
+
+@app.route("/api/query", methods=["POST"])
+@require_auth
+def run_query(current_user):
+    db_path = get_user_db_path(current_user["user_id"])
     if not os.path.exists(db_path):
-        return jsonify({"error": "Database not found"}), 404
+        return jsonify({"error": "No database found"}), 404
 
     body = request.get_json() or {}
     sql  = body.get("sql", "").strip()
@@ -415,5 +639,6 @@ def run_query(db_name):
 # ───────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    print("DB-Omni API  ->  http://127.0.0.1:5000")
-    app.run(debug=True, port=5000)
+    port = int(os.getenv("FLASK_PORT", 5000))
+    print(f"DB-Omni API -> http://127.0.0.1:{port}")
+    app.run(debug=True, port=port)

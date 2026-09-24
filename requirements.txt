@@ -1,4 +1,16 @@
+# Flask server
 flask
+
+# Excel parsing
 pandas
 openpyxl
 xlrd
+
+# Firebase Admin SDK (query Firestore playground_users)
+firebase-admin
+
+# Auth: JWT token generation & verification
+PyJWT
+
+# Load .env variables
+python-dotenv
