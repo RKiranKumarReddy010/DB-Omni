@@ -98,15 +98,11 @@ def index():
 
 @app.errorhandler(404)
 def handle_404(e):
-    rules = [str(r) for r in app.url_map.iter_rules()]
     return jsonify({
         "error": "Not Found",
-        "requested_path": request.path,
-        "environ_path_info": request.environ.get("PATH_INFO"),
-        "environ_script_name": request.environ.get("SCRIPT_NAME"),
-        "headers": dict(request.headers),
-        "available_routes": rules
+        "requested_path": request.path
     }), 404
+
 
 
 
