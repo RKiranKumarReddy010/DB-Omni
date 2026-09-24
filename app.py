@@ -18,6 +18,7 @@ Database scoping:
 
 import os
 import re
+import json
 import sqlite3
 import datetime
 import functools
@@ -35,14 +36,61 @@ load_dotenv()
 
 app = Flask(__name__)
 
-DATABASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Database")
-os.makedirs(DATABASE_DIR, exist_ok=True)
-
-# Firebase is initialised lazily inside get_firestore().
-# Nothing runs at import time, so the server always starts successfully
-# even if serviceAccountKey.json is not yet present.
 _firebase_app = None
 _fs           = None
+
+# On Vercel / serverless platforms, the root filesystem is read-only.
+# All file writes (SQLite DBs, temp upload files) must happen in /tmp.
+if os.environ.get("VERCEL") or not os.access(os.path.dirname(os.path.abspath(__file__)), os.W_OK):
+    DATABASE_DIR = "/tmp/Database"
+else:
+    DATABASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Database")
+
+try:
+    os.makedirs(DATABASE_DIR, exist_ok=True)
+except (OSError, PermissionError):
+    DATABASE_DIR = "/tmp/Database"
+    os.makedirs(DATABASE_DIR, exist_ok=True)
+
+
+# ─── CORS Support ─────────────────────────────────────────────────────────────
+
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        res = jsonify({"status": "ok"})
+        res.headers["Access-Control-Allow-Origin"] = "*"
+        res.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        res.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return res, 200
+
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    return response
+
+
+# ─── Root Route / Health Check ────────────────────────────────────────────────
+
+@app.route("/", methods=["GET"])
+def index():
+    return jsonify({
+        "status": "online",
+        "service": "DB-Omni API",
+        "version": "1.0.0",
+        "endpoints": {
+            "auth_login": "POST /api/auth/login",
+            "auth_me": "GET /api/auth/me",
+            "upload": "POST /api/upload",
+            "database_info": "GET /api/database/info",
+            "tables": "GET /api/tables",
+            "query": "POST /api/query"
+        }
+    })
+
 
 
 def get_firestore():
