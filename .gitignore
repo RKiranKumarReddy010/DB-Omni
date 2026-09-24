@@ -1,0 +1,19 @@
+# Python virtual environment
+vevnn/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# SQLite databases
+Database/*.db
+
+# Temp upload files
+Database/__tmp__*
+
+# OS
+.DS_Store
+Thumbs.db
