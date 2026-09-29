@@ -197,7 +197,7 @@ JWT_SECRET    = os.getenv("JWT_SECRET", "change-me-to-a-long-random-secret")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRE    = int(os.getenv("JWT_EXPIRE_SECONDS", 28800))  # 8 hours
 
-ALLOWED_EXTENSIONS = {"xlsx", "xls", "xlsm", "xlsb", "ods"}
+ALLOWED_EXTENSIONS = {"xlsx", "xls", "xlsm", "xlsb", "ods", "json"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -247,18 +247,23 @@ def get_user_db_path(user_id: str) -> str:
     return os.path.join(DATABASE_DIR, f"{safe_id}.db")
 
 
-def excel_to_sqlite(file_path: str, db_path: str) -> dict:
+def excel_to_sqlite(file_path: str, db_path: str, prefix: str = "") -> dict:
     """
     Parse every sheet of an Excel file and write each sheet as a table
-    inside the given db_path.  Returns a summary dict.
+    inside the given db_path. Prefix is used to prevent sheet collisions across files.
     """
     xl = pd.ExcelFile(file_path, engine=pick_engine(file_path))
-    summary = {"db_file": os.path.basename(db_path), "sheets": []}
+    summary = {
+        "file": os.path.basename(file_path),
+        "type": "excel",
+        "sheets": []
+    }
 
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
 
     try:
+        clean_prefix = sanitize_name(prefix) if prefix else ""
         for sheet in xl.sheet_names:
             df = xl.parse(sheet)
             df.dropna(how="all", inplace=True)
@@ -279,11 +284,18 @@ def excel_to_sqlite(file_path: str, db_path: str) -> dict:
                 cols.append(c)
             df.columns = cols
 
-            table_name = sanitize_name(sheet)
+            sheet_name_clean = sanitize_name(sheet)
+            if clean_prefix:
+                table_name = sanitize_name(f"{clean_prefix}_{sheet_name_clean}")
+            else:
+                table_name = sheet_name_clean
+
             col_defs = [f'"{c}" {infer_dtype(df[c])}' for c in df.columns]
 
+            # Recreate table cleanly so re-upload replaces table contents
+            cur.execute(f'DROP TABLE IF EXISTS "{table_name}"')
             cur.execute(
-                f'CREATE TABLE IF NOT EXISTS "{table_name}" '
+                f'CREATE TABLE "{table_name}" '
                 f'(id INTEGER PRIMARY KEY AUTOINCREMENT, {", ".join(col_defs)})'
             )
 
@@ -312,11 +324,68 @@ def excel_to_sqlite(file_path: str, db_path: str) -> dict:
                 "columns": list(df.columns),
             })
     finally:
-        # Release file handle so Windows can delete the temp file
         xl.close()
         conn.close()
 
     return summary
+
+
+def json_to_sqlite(file_path: str, db_path: str, table_stem: str) -> dict:
+    """
+    Parse a JSON file and store it inside db_path in a dedicated table.
+    Stores full raw JSON in key '_raw' and top-level keys as individual rows.
+    """
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    table_name = sanitize_name(table_stem)
+    raw_str = json.dumps(data)
+
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    keys_stored = 1
+
+    try:
+        cur.execute(
+            f'CREATE TABLE IF NOT EXISTS "{table_name}" ('
+            f'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+            f'key TEXT UNIQUE, '
+            f'value TEXT'
+            f')'
+        )
+
+        cur.execute(
+            f'INSERT OR REPLACE INTO "{table_name}" (key, value) VALUES (?, ?)',
+            ("_raw", raw_str)
+        )
+
+        if isinstance(data, dict):
+            for k, v in data.items():
+                val_str = json.dumps(v) if isinstance(v, (dict, list)) else (str(v) if v is not None else None)
+                cur.execute(
+                    f'INSERT OR REPLACE INTO "{table_name}" (key, value) VALUES (?, ?)',
+                    (str(k), val_str)
+                )
+                keys_stored += 1
+        elif isinstance(data, list):
+            for idx, item in enumerate(data):
+                val_str = json.dumps(item) if isinstance(item, (dict, list)) else (str(item) if item is not None else None)
+                cur.execute(
+                    f'INSERT OR REPLACE INTO "{table_name}" (key, value) VALUES (?, ?)',
+                    (f"item_{idx}", val_str)
+                )
+                keys_stored += 1
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {
+        "file": os.path.basename(file_path),
+        "type": "json_config",
+        "table": table_name,
+        "keys_stored": keys_stored
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -424,36 +493,99 @@ def me(current_user):
 
 # POST /api/upload
 # Header: Authorization: Bearer <token>
-# Body: multipart/form-data  field "file" = Excel workbook
-# Saves sheets as tables inside Database/<user_id>.db
+# Body: multipart/form-data
+# Accepts single or multiple files under "file", "files", or any field name.
+# Supported formats: .xlsx, .xls, .xlsm, .xlsb, .ods, .json
+# Saves sheets and configs as tables inside Database/<user_id>.db
 
 @app.route("/api/upload", methods=["POST"])
 @require_auth
 def upload(current_user):
-    if "file" not in request.files:
+    uploaded_files = []
+    seen_ids = set()
+    for key in request.files:
+        for f in request.files.getlist(key):
+            if f and f.filename and id(f) not in seen_ids:
+                seen_ids.add(id(f))
+                uploaded_files.append(f)
+
+    if not uploaded_files:
         return jsonify({"error": "No file part in request"}), 400
-    file = request.files["file"]
-    if not file.filename:
-        return jsonify({"error": "No file selected"}), 400
-    if not allowed_file(file.filename):
-        return jsonify({"error": "Unsupported type. Accepted: .xlsx .xls .xlsm .xlsb .ods"}), 400
+
+    for f in uploaded_files:
+        if not allowed_file(f.filename):
+            return jsonify({
+                "error": f"Unsupported file type for '{f.filename}'. Accepted: .xlsx, .xls, .xlsm, .xlsb, .ods, .json"
+            }), 400
 
     user_id = current_user["user_id"]
     db_path = get_user_db_path(user_id)
-    ext     = os.path.splitext(file.filename)[1]
-    tmp_path = os.path.join(DATABASE_DIR, f"__tmp_{user_id}__{ext}")
-    file.save(tmp_path)
+    files_summary = []
+    all_sheets = []
 
+    for f in uploaded_files:
+        filename = f.filename
+        stem = os.path.splitext(os.path.basename(filename))[0]
+        ext = os.path.splitext(filename)[1].lower()
+        tmp_path = os.path.join(DATABASE_DIR, f"__tmp_{user_id}_{sanitize_name(stem)}{ext}")
+        f.save(tmp_path)
+
+        try:
+            if ext == ".json":
+                res = json_to_sqlite(tmp_path, db_path, stem)
+                files_summary.append(res)
+            else:
+                # Use filename stem as prefix if multiple files, or to avoid collisions
+                res = excel_to_sqlite(tmp_path, db_path, prefix=stem)
+                files_summary.append(res)
+                all_sheets.extend(res.get("sheets", []))
+        except Exception as exc:
+            return jsonify({"error": f"Error processing '{filename}': {exc}"}), 500
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
+
+    return jsonify({
+        "success": True,
+        "summary": {
+            "user_id": user_id,
+            "db_file": os.path.basename(db_path),
+            "files_processed": len(files_summary),
+            "files": files_summary,
+            "sheets": all_sheets
+        }
+    }), 201
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  CONFIG ENDPOINT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# GET /api/config/<config_name>  → return parsed JSON config for current user
+
+@app.route("/api/config/<config_name>", methods=["GET"])
+@require_auth
+def get_config(config_name, current_user):
+    db_path = get_user_db_path(current_user["user_id"])
+    if not os.path.exists(db_path):
+        return jsonify({"error": "No database found. Upload your files first."}), 404
+
+    table_name = sanitize_name(config_name)
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
     try:
-        summary = excel_to_sqlite(tmp_path, db_path)
+        cur.execute(f'SELECT value FROM "{table_name}" WHERE key = ?', ("_raw",))
+        row = cur.fetchone()
+        if not row or not row[0]:
+            return jsonify({"error": f"Config '{config_name}' not found"}), 404
+        return jsonify({"success": True, "config_name": table_name, "config": json.loads(row[0])})
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": str(exc)}), 400
     finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-    summary["user_id"] = user_id
-    return jsonify({"success": True, "summary": summary}), 201
+        conn.close()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
