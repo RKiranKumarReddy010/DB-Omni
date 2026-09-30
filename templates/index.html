@@ -314,12 +314,329 @@
       color: var(--text);
     }
 
+    /* ─── Auth Card & Session Manager ─── */
+    .auth-card {
+      margin-top: 4px;
+    }
+
+    .auth-badge {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .auth-badge.guest {
+      background: rgba(148, 163, 184, 0.14);
+      color: #94a3b8;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+    }
+
+    .auth-badge.active {
+      background: rgba(16, 185, 129, 0.16);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.35);
+    }
+
+    .auth-desc {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      margin-bottom: 18px;
+      line-height: 1.6;
+    }
+
+    .auth-form {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .input-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      text-align: left;
+    }
+
+    .input-group label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+    }
+
+    .input-group input {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.92rem;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .input-group input:focus {
+      outline: none;
+      border-color: var(--indigo);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+
+    .form-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .remember-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .remember-label input[type="checkbox"] {
+      accent-color: var(--emerald);
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #ffffff;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 20px;
+      font-weight: 700;
+      font-size: 0.88rem;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 8px 14px;
+      font-weight: 600;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: var(--card-hover);
+    }
+
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.12);
+      color: #fca5a5;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 10px;
+      padding: 8px 14px;
+      font-weight: 600;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.22);
+    }
+
+    .auth-error {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #fca5a5;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      text-align: left;
+    }
+
+    /* Logged In View */
+    .session-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--card-border);
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .session-user-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .session-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--indigo) 0%, var(--cyan) 100%);
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 1.1rem;
+      box-shadow: 0 0 16px rgba(99, 102, 241, 0.3);
+    }
+
+    .session-username {
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: var(--text);
+    }
+
+    .session-role {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .session-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .token-container {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      text-align: left;
+    }
+
+    .token-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .token-hint {
+      color: #34d399;
+      text-transform: none;
+      font-weight: 500;
+    }
+
+    .token-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 6px 8px;
+    }
+
+    .token-box input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #a5b4fc;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      padding: 6px 8px;
+      outline: none;
+      text-overflow: ellipsis;
+    }
+
+    .btn-copy {
+      background: rgba(99, 102, 241, 0.2);
+      border: 1px solid rgba(99, 102, 241, 0.35);
+      color: #c7d2fe;
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .btn-copy:hover {
+      background: rgba(99, 102, 241, 0.35);
+      color: #ffffff;
+    }
+
+    .token-note {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      margin-top: 10px;
+      text-align: left;
+      line-height: 1.5;
+    }
+
+    .token-note strong {
+      color: #34d399;
+    }
+
+    .verify-status {
+      margin-top: 12px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      text-align: left;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .verify-status.success {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      color: #6ee7b7;
+    }
+
+    .verify-status.error {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #fca5a5;
+    }
+
     @media (max-width: 640px) {
       .hero {
         padding: 30px 20px;
       }
       .title {
         font-size: 2rem;
+      }
+      .input-grid {
+        grid-template-columns: 1fr;
       }
       .endpoint-row {
         flex-direction: column;
@@ -371,6 +688,79 @@
         </div>
       </div>
 
+    </div>
+
+    <!-- Browser Auth & Persistent Token Manager -->
+    <div class="section-card auth-card" id="authSection">
+      <div class="section-title">
+        <span>Browser Authentication &amp; Token</span>
+        <span id="authBadge" class="auth-badge guest">Not Logged In</span>
+      </div>
+
+      <!-- State 1: Logged Out Form -->
+      <div id="loggedOutView" class="auth-view">
+        <p class="auth-desc">Log in with your Firestore credentials. Your auth token is deterministic (remains identical on every login) and stays saved in your browser (LocalStorage) so you stay logged in permanently across visits.</p>
+        <form id="loginForm" class="auth-form" onsubmit="handleLoginSubmit(event)">
+          <div class="input-grid">
+            <div class="input-group">
+              <label for="inputUserId">User ID</label>
+              <input type="text" id="inputUserId" placeholder="e.g. kiran.kumar" required autocomplete="username" />
+            </div>
+            <div class="input-group">
+              <label for="inputPassword">Password</label>
+              <input type="password" id="inputPassword" placeholder="Enter password" required autocomplete="current-password" />
+            </div>
+          </div>
+          <div class="form-actions">
+            <label class="remember-label">
+              <input type="checkbox" id="rememberMe" checked />
+              <span>Save auth token in browser (Stay logged in)</span>
+            </label>
+            <button type="submit" id="loginBtn" class="btn-primary">
+              <span id="loginBtnText">Log In &amp; Save Token</span>
+            </button>
+          </div>
+          <div id="loginError" class="auth-error" style="display: none;"></div>
+        </form>
+      </div>
+
+      <!-- State 2: Logged In View -->
+      <div id="loggedInView" class="auth-view" style="display: none;">
+        <div class="session-header">
+          <div class="session-user-info">
+            <div class="session-avatar" id="avatarInitial">U</div>
+            <div>
+              <div class="session-username" id="displayUserId">user</div>
+              <div class="session-role" id="displayPrivileges">Interactive Analyst</div>
+            </div>
+          </div>
+          <div class="session-actions">
+            <button type="button" class="btn-secondary" onclick="verifyCurrentToken()">
+              <span>&#x2714; Verify Token</span>
+            </button>
+            <button type="button" class="btn-danger" onclick="handleLogout()">
+              <span>Log Out</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="token-container">
+          <div class="token-label">
+            <span>Persistent JWT Bearer Token (Identical every login)</span>
+            <span class="token-hint">&#x1F512; Preserved in LocalStorage</span>
+          </div>
+          <div class="token-box">
+            <input type="text" id="tokenDisplay" readonly />
+            <button type="button" id="copyTokenBtn" class="btn-copy" onclick="copyTokenToClipboard()">
+              Copy Token
+            </button>
+          </div>
+        </div>
+        <p class="token-note">
+          <strong>Permanent &amp; Deterministic:</strong> This auth token is preserved in your browser's LocalStorage. It will remain the exact same every time you log in and never expires automatically.
+        </p>
+        <div id="verifyStatus" class="verify-status" style="display: none;"></div>
+      </div>
     </div>
 
     <!-- API Directory -->
@@ -469,6 +859,189 @@
 
     measurePing();
     setInterval(measurePing, 5000);
+
+    // Browser Token Management
+    const TOKEN_KEY = 'dbomni_token';
+    const USER_ID_KEY = 'dbomni_user_id';
+    const PRIVILEGES_KEY = 'dbomni_privileges';
+
+    function getSavedToken() {
+      try {
+        return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function saveAuthSession(token, userId, privileges, remember) {
+      if (remember) {
+        try {
+          localStorage.setItem(TOKEN_KEY, token);
+          localStorage.setItem(USER_ID_KEY, userId);
+          if (privileges) localStorage.setItem(PRIVILEGES_KEY, privileges);
+        } catch (e) {}
+      }
+      try {
+        sessionStorage.setItem(TOKEN_KEY, token);
+        sessionStorage.setItem(USER_ID_KEY, userId);
+        if (privileges) sessionStorage.setItem(PRIVILEGES_KEY, privileges);
+      } catch (e) {}
+    }
+
+    function clearAuthSession() {
+      try {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_ID_KEY);
+        localStorage.removeItem(PRIVILEGES_KEY);
+        sessionStorage.removeItem(TOKEN_KEY);
+        sessionStorage.removeItem(USER_ID_KEY);
+        sessionStorage.removeItem(PRIVILEGES_KEY);
+      } catch (e) {}
+    }
+
+    function renderLoggedInUI(userId, privileges, token) {
+      document.getElementById('loggedOutView').style.display = 'none';
+      document.getElementById('loggedInView').style.display = 'block';
+
+      const badge = document.getElementById('authBadge');
+      badge.textContent = 'Active • Saved in Browser';
+      badge.className = 'auth-badge active';
+
+      document.getElementById('displayUserId').textContent = userId;
+      document.getElementById('displayPrivileges').textContent = privileges || 'Authorized User';
+      document.getElementById('avatarInitial').textContent = (userId || 'U').charAt(0).toUpperCase();
+      document.getElementById('tokenDisplay').value = token;
+      document.getElementById('loginError').style.display = 'none';
+    }
+
+    function renderLoggedOutUI() {
+      document.getElementById('loggedOutView').style.display = 'block';
+      document.getElementById('loggedInView').style.display = 'none';
+
+      const badge = document.getElementById('authBadge');
+      badge.textContent = 'Not Logged In';
+      badge.className = 'auth-badge guest';
+
+      document.getElementById('tokenDisplay').value = '';
+      document.getElementById('verifyStatus').style.display = 'none';
+    }
+
+    async function initAuth() {
+      const token = getSavedToken();
+      if (!token) {
+        renderLoggedOutUI();
+        return;
+      }
+
+      // Quick check against /api/auth/me
+      try {
+        const res = await fetch('/api/auth/me', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          renderLoggedInUI(data.user_id, data.privileges, token);
+        } else {
+          clearAuthSession();
+          renderLoggedOutUI();
+        }
+      } catch (err) {
+        const savedUser = localStorage.getItem(USER_ID_KEY) || sessionStorage.getItem(USER_ID_KEY) || 'user';
+        const savedPriv = localStorage.getItem(PRIVILEGES_KEY) || sessionStorage.getItem(PRIVILEGES_KEY) || 'Authorized';
+        renderLoggedInUI(savedUser, savedPriv, token);
+      }
+    }
+
+    async function handleLoginSubmit(e) {
+      e.preventDefault();
+      const userId = document.getElementById('inputUserId').value.trim();
+      const password = document.getElementById('inputPassword').value.trim();
+      const remember = document.getElementById('rememberMe').checked;
+      const btn = document.getElementById('loginBtn');
+      const btnText = document.getElementById('loginBtnText');
+      const errBox = document.getElementById('loginError');
+
+      if (!userId || !password) return;
+
+      btn.disabled = true;
+      btnText.textContent = 'Authenticating...';
+      errBox.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: userId, password })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          errBox.textContent = data.error || 'Authentication failed. Please verify credentials.';
+          errBox.style.display = 'block';
+          return;
+        }
+
+        saveAuthSession(data.token, data.user_id, data.privileges, remember);
+        renderLoggedInUI(data.user_id, data.privileges, data.token);
+      } catch (err) {
+        errBox.textContent = 'Server connection error. Please try again.';
+        errBox.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btnText.textContent = 'Log In & Save Token';
+      }
+    }
+
+    async function verifyCurrentToken() {
+      const token = getSavedToken();
+      const statusEl = document.getElementById('verifyStatus');
+      if (!token) return;
+
+      statusEl.style.display = 'block';
+      statusEl.className = 'verify-status';
+      statusEl.textContent = 'Verifying token with /api/auth/me...';
+
+      try {
+        const res = await fetch('/api/auth/me', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (res.ok) {
+          statusEl.className = 'verify-status success';
+          statusEl.textContent = `✔ Token Valid! Authenticated as: ${data.user_id} (${data.privileges})`;
+        } else {
+          statusEl.className = 'verify-status error';
+          statusEl.textContent = `✖ Verification failed: ${data.error || 'Invalid token'}`;
+        }
+      } catch (e) {
+        statusEl.className = 'verify-status error';
+        statusEl.textContent = `✖ Verification error: ${e.message}`;
+      }
+    }
+
+    function copyTokenToClipboard() {
+      const tokenInput = document.getElementById('tokenDisplay');
+      if (!tokenInput || !tokenInput.value) return;
+      navigator.clipboard.writeText(tokenInput.value).then(() => {
+        const copyBtn = document.getElementById('copyTokenBtn');
+        const orig = copyBtn.textContent;
+        copyBtn.textContent = 'Copied!';
+        copyBtn.style.background = 'rgba(16, 185, 129, 0.4)';
+        copyBtn.style.color = '#ffffff';
+        setTimeout(() => {
+          copyBtn.textContent = orig;
+          copyBtn.style.background = '';
+          copyBtn.style.color = '';
+        }, 2000);
+      });
+    }
+
+    function handleLogout() {
+      clearAuthSession();
+      renderLoggedOutUI();
+    }
+
+    initAuth();
   </script>
 </body>
 </html>

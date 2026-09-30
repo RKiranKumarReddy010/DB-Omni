@@ -454,18 +454,22 @@ def json_to_sqlite(file_path: str, db_path: str, table_stem: str) -> dict:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def create_token(user_id: str, privileges: str) -> str:
+    """
+    Generate a deterministic, persistent JWT token for the user.
+    Omitting dynamic iat and exp timestamps guarantees that the token is the exact
+    same string every time the user logs in and remains valid in the browser indefinitely.
+    """
     payload = {
         "user_id":    user_id,
         "privileges": privileges,
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(seconds=JWT_EXPIRE),
-        "iat": datetime.datetime.utcnow(),
+        "iss":        "db-omni",
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
 def decode_token(token: str) -> dict:
-    """Decode and validate JWT. Raises jwt.exceptions.* on failure."""
-    return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    """Decode and validate JWT without exp expiration failures."""
+    return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_exp": False})
 
 
 def require_auth(f):
@@ -567,7 +571,7 @@ def login():
         "token":      token,
         "user_id":    user_id,
         "privileges": privileges,
-        "expires_in": JWT_EXPIRE,
+        "expires_in": None,
     })
 
 
